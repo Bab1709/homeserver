@@ -1,0 +1,121 @@
+# Homepage (startside med links til alle dine tjenester)
+# Web-panel: http://192.168.1.86:3000
+#
+# Al opsætning af fliser ligger herunder i "homepage-config".
+# Vil du ændre noget: ret teksten, og tryk "Update the stack" i Portainer.
+#
+# Tilføj i Portainer under "Environment variables":
+#   PIHOLE_PASSWORD = samme password som du bruger til Pi-hole
+#   TAILSCALE_DEVICE_ID = Pi'ens ID fra Tailscale (se README)
+#   TAILSCALE_API_KEY   = API-nøgle fra Tailscale (se README)
+
+services:
+  # Lille hjælpe-container: skriver opsætningsfilerne og stopper igen.
+  homepage-config:
+    image: busybox:latest
+    container_name: homepage-config
+    restart: "no"
+    volumes:
+      - homepage_config:/config
+    command:
+      - sh
+      - -c
+      - |
+        cat > /config/settings.yaml <<'YAML'
+        title: Homeserver
+        language: da
+        theme: dark
+        color: slate
+        headerStyle: boxed
+        layout:
+          Netværk:
+            style: row
+            columns: 2
+          Styring:
+            style: row
+            columns: 2
+        YAML
+
+        cat > /config/services.yaml <<'YAML'
+        - Netværk:
+            - Pi-hole:
+                href: http://192.168.1.86:8080/admin
+                description: Reklame- og DNS-blokering
+                icon: pi-hole.png
+                widget:
+                  type: pihole
+                  url: http://192.168.1.86:8080
+                  version: 6
+                  key: "{{HOMEPAGE_VAR_PIHOLE_PASSWORD}}"
+            - Tailscale:
+                href: https://login.tailscale.com/admin/machines
+                description: Adgang hjemmefra via VPN
+                icon: tailscale.png
+                widget:
+                  type: tailscale
+                  deviceid: "{{HOMEPAGE_VAR_TAILSCALE_DEVICE_ID}}"
+                  key: "{{HOMEPAGE_VAR_TAILSCALE_API_KEY}}"
+        - Styring:
+            - Portainer:
+                href: https://192.168.1.86:9443
+                description: Styr dine containere
+                icon: portainer.png
+            - Uptime Kuma:
+                href: http://192.168.1.86:3001
+                description: Overvågning af tjenester
+                icon: uptime-kuma.png
+                siteMonitor: http://192.168.1.86:3001
+        YAML
+
+        cat > /config/widgets.yaml <<'YAML'
+        - resources:
+            label: Raspberry Pi
+            cpu: true
+            memory: true
+            disk: /
+            cputemp: true
+            uptime: true
+        - datetime:
+            text_size: xl
+            locale: da
+            format:
+              dateStyle: long
+              timeStyle: short
+              hour12: false
+        YAML
+
+        cat > /config/bookmarks.yaml <<'YAML'
+        []
+        YAML
+        cat > /config/docker.yaml <<'YAML'
+        {}
+        YAML
+        cat > /config/kubernetes.yaml <<'YAML'
+        YAML
+        cat > /config/custom.css <<'YAML'
+        YAML
+        cat > /config/custom.js <<'YAML'
+        YAML
+        echo "Homepage-opsætning skrevet."
+
+  homepage:
+    image: ghcr.io/gethomepage/homepage:latest
+    container_name: homepage
+    depends_on:
+      homepage-config:
+        condition: service_completed_successfully
+    ports:
+      - "3000:3000"
+    environment:
+      # De adresser du må åbne Homepage på. Uden denne får du en fejl i browseren.
+      HOMEPAGE_ALLOWED_HOSTS: 192.168.1.86:3000,homeserver:3000,homeserver.local:3000,localhost:3000
+      HOMEPAGE_VAR_PIHOLE_PASSWORD: ${PIHOLE_PASSWORD}
+      HOMEPAGE_VAR_TAILSCALE_DEVICE_ID: ${TAILSCALE_DEVICE_ID}
+      HOMEPAGE_VAR_TAILSCALE_API_KEY: ${TAILSCALE_API_KEY}
+      TZ: Europe/Copenhagen
+    volumes:
+      - homepage_config:/app/config
+    restart: unless-stopped
+
+volumes:
+  homepage_config:
