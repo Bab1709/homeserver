@@ -74,6 +74,28 @@ Godt at vide:
 
 Husk: Homepage læser kun variablen når stacken startes, så den skal altid opdateres efter en ændring.
 
+### Tailscale (adgang hjemmefra)
+
+Tailscale installeres direkte på Pi'en, ikke som en stack. Er det ikke gjort endnu, så kør i Pi'ens terminal:
+
+```sh
+curl -fsSL https://tailscale.com/install.sh | sh
+sudo tailscale up
+```
+
+Åbn linket der vises, og log ind. Så er Pi'en med i dit Tailscale-netværk.
+
+**Tailscale-flisen på Homepage** skal bruge to ting, som lægges i Portainer (aldrig i filerne her):
+
+1. **API-nøgle:** Gå til https://login.tailscale.com/admin/settings/keys og klik **Generate access token** (API-nøgle).
+   Kopier nøglen (starter med `tskey-api-`). Den udløber efter højst 90 dage, så skal der laves en ny.
+2. **Enheds-ID:** Gå til https://login.tailscale.com/admin/machines, klik på `homeserver`, og kopier **ID** under
+   *Machine Details*.
+3. I Portainer: **Stacks > homepage**. Tilføj under **Environment variables**:
+   - `TAILSCALE_API_KEY` = nøglen fra trin 1
+   - `TAILSCALE_DEVICE_ID` = ID'et fra trin 2
+4. Opdater compose-teksten i **Editor** med den nyeste `stacks/homepage/docker-compose.yml`, og klik **Update the stack**.
+
 ### Pi-hole
 
 Pi-hole kører allerede. Filen `stacks/pihole/docker-compose.yml` er en kopi af opsætningen, så den er gemt et sikkert sted.

@@ -6,6 +6,8 @@
 #
 # Tilføj i Portainer under "Environment variables":
 #   PIHOLE_PASSWORD = samme password som du bruger til Pi-hole
+#   TAILSCALE_DEVICE_ID = Pi'ens ID fra Tailscale (se README)
+#   TAILSCALE_API_KEY   = API-nøgle fra Tailscale (se README)
 
 services:
   # Lille hjælpe-container: skriver opsætningsfilerne og stopper igen.
@@ -45,6 +47,14 @@ services:
                   url: http://192.168.1.86:8080
                   version: 6
                   key: "{{HOMEPAGE_VAR_PIHOLE_PASSWORD}}"
+            - Tailscale:
+                href: https://login.tailscale.com/admin/machines
+                description: Adgang hjemmefra via VPN
+                icon: tailscale.png
+                widget:
+                  type: tailscale
+                  deviceid: "{{HOMEPAGE_VAR_TAILSCALE_DEVICE_ID}}"
+                  key: "{{HOMEPAGE_VAR_TAILSCALE_API_KEY}}"
         - Styring:
             - Portainer:
                 href: https://192.168.1.86:9443
@@ -100,6 +110,8 @@ services:
       # De adresser du må åbne Homepage på. Uden denne får du en fejl i browseren.
       HOMEPAGE_ALLOWED_HOSTS: 192.168.1.86:3000,homeserver:3000,homeserver.local:3000,localhost:3000
       HOMEPAGE_VAR_PIHOLE_PASSWORD: ${PIHOLE_PASSWORD}
+      HOMEPAGE_VAR_TAILSCALE_DEVICE_ID: ${TAILSCALE_DEVICE_ID}
+      HOMEPAGE_VAR_TAILSCALE_API_KEY: ${TAILSCALE_API_KEY}
       TZ: Europe/Copenhagen
     volumes:
       - homepage_config:/app/config
