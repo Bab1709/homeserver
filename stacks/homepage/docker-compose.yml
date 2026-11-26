@@ -38,6 +38,9 @@ services:
           Hjem:
             style: row
             columns: 2
+          Strøm:
+            style: row
+            columns: 1
         YAML
 
         cat > /config/services.yaml <<'YAML'
@@ -78,6 +81,39 @@ services:
                   type: homeassistant
                   url: http://192.168.1.86:8123
                   key: "{{HOMEPAGE_VAR_HOME_ASSISTANT_TOKEN}}"
+        - Strøm:
+            - Strømforbrug:
+                href: http://192.168.1.86:3002
+                description: Anslået forbrug for Raspberry Pi (watt)
+                icon: mdi-lightning-bolt
+                widget:
+                  type: customapi
+                  url: http://192.168.1.86:3002/api/now
+                  refreshInterval: 10000
+                  mappings:
+                    - field: watts
+                      label: Nu
+                      format: float
+                      suffix: " W"
+                    - field: avg24h
+                      label: Gns. 24 t
+                      format: float
+                      suffix: " W"
+                    - field: max24h
+                      label: Maks. 24 t
+                      format: float
+                      suffix: " W"
+                    - field: kwh24h
+                      label: Forbrug 24 t
+                      format: float
+                      suffix: " kWh"
+            - Strømgraf:
+                widget:
+                  type: iframe
+                  name: pipower
+                  src: http://192.168.1.86:3002/?embed=1
+                  classes: h-60 sm:h-60 md:h-60 lg:h-60 xl:h-60 2xl:h-72
+                  allowScrolling: "no"
         YAML
 
         cat > /config/widgets.yaml <<'YAML'
