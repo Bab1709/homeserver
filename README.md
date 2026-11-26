@@ -62,6 +62,18 @@ Godt at vide:
 - Står der *"Host validation failed"* i browseren, så åbner du siden på en adresse, der ikke står i
   `HOMEPAGE_ALLOWED_HOSTS`. Tilføj adressen der (med `:3000`) og opdater stacken.
 
+**Pi-hole-flisen viser "API fejl"?** Så kan Homepage ikke logge ind i Pi-hole. Den sikreste løsning er en
+*app-adgangskode* (et særskilt password kun til programmer som Homepage):
+
+1. Åbn http://192.168.1.86:8080/admin og log ind.
+2. Gå til **Settings > Web interface / API**.
+3. Slå knappen øverst til højre om fra **Basic** til **Expert**.
+4. Klik **Configure app password**. Kopier koden der vises (du ser den kun én gang), og klik **Enable new app password**.
+5. I Portainer: **Stacks > homepage**. Ret `PIHOLE_PASSWORD` under **Environment variables** til den nye kode.
+6. Klik **Update the stack**. Genindlæs Homepage efter et halvt minut.
+
+Husk: Homepage læser kun variablen når stacken startes, så den skal altid opdateres efter en ændring.
+
 ### Pi-hole
 
 Pi-hole kører allerede. Filen `stacks/pihole/docker-compose.yml` er en kopi af opsætningen, så den er gemt et sikkert sted.
