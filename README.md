@@ -12,8 +12,9 @@ Alt kører i Docker og styres fra Portainer.
 | Uptime Kuma | Holder øje med om alt kører               | http://192.168.1.86:3001         | `stacks/uptime-kuma`  |
 | Homepage    | Startside med links til det hele          | http://192.168.1.86:3000         | `stacks/homepage`     |
 | Home Assistant | Styring af lys, stik og sensorer i hjemmet | http://192.168.1.86:8123   | `stacks/home-assistant` |
+| Strømmåler  | Anslået strømforbrug for Pi'en, med graf | http://192.168.1.86:3002        | `stacks/pi-power`    |
 
-Porte i brug: `53` (DNS), `8080` (Pi-hole), `9443` og `8000` (Portainer), `3001` (Uptime Kuma), `3000` (Homepage), `8123` (Home Assistant).
+Porte i brug: `53` (DNS), `8080` (Pi-hole), `9443` og `8000` (Portainer), `3001` (Uptime Kuma), `3000` (Homepage), `8123` (Home Assistant), `3002` (Strømmåler).
 Hvis du tilføjer noget nyt, så vælg en port der ikke står her.
 
 ## Passwords
@@ -127,6 +128,44 @@ Godt at vide:
   kan installeres manuelt senere, men den er ikke nødvendig for at komme i gang.
 - `privileged: true` giver Home Assistant adgang til USB-dongler (Zigbee/Z-Wave) og Bluetooth på Pi'en.
 - Opdatering: **Stacks > home-assistant**, klik **Update the stack**, og slå **Re-pull image** til.
+
+### Strømmåler (strømforbrug på Homepage)
+
+Pi 5 måler selv spænding og strøm på sine egne strømkredse. Strømmåleren læser det hvert 10. sekund, regner det om
+til watt, gemmer det i 30 dage og viser en graf. Homepage får en flise med watt lige nu og en graf.
+
+Det er et **skøn**: strøm til USB-enheder (f.eks. en USB-disk) og tab i strømforsyningen er ikke med.
+En måler i stikkontakten vil derfor vise lidt mere.
+
+**1. Test først at Pi'en kan måle.** Log ind på Pi'en (f.eks. med `ssh` fra din computer), og kør:
+
+```sh
+vcgencmd pmic_read_adc
+```
+
+Du skal se en liste med linjer som `VDD_CORE_A current(7)=0.71570000A` og `VDD_CORE_V volt(15)=0.77202400V`.
+Kør også:
+
+```sh
+ls -l /dev/vcio /usr/bin/vcgencmd
+```
+
+Begge skal findes. Giver en af kommandoerne en fejl, så stop her (ellers laver Docker en tom mappe i stedet for filen).
+
+**2. Læg stacken ind.** Følg trinene øverst med navnet `pi-power` og filen `stacks/pi-power/docker-compose.yml`.
+Ingen password-variabel. Første gang henter den Python (ca. 50 MB), så det tager et minut.
+
+**3. Tjek siden.** Åbn http://192.168.1.86:3002. Efter 10-20 sekunder står der et tal i watt, og grafen begynder
+at tegne sig. Knapperne øverst skifter mellem 1 time, 24 timer, 7 dage og 30 dage.
+http://192.168.1.86:3002/api/raw viser de rå målinger, hvis noget ser forkert ud.
+
+**4. Opdater Homepage.** I Portainer: **Stacks > homepage > Editor**. Erstat teksten med den nyeste
+`stacks/homepage/docker-compose.yml`, og klik **Update the stack**. Nu er der en ny række **Strøm** på Homepage.
+
+Godt at vide:
+- Står der *"Fejl"* på siden, så se loggen: **Containers > pi-power > Logs** i Portainer.
+- Historikken ligger i volumen `pi_power_data` og overlever genstart og opdatering.
+- Det bruger meget lidt: én lille Python-proces og en database på få MB.
 
 ### Pi-hole
 

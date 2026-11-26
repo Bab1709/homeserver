@@ -1,0 +1,350 @@
+# Strømmåler til Raspberry Pi 5 (anslået strømforbrug i watt, med graf)
+# Web-side: http://192.168.1.86:3002
+#
+# Pi 5 måler selv spænding og strøm på sine egne strømkredse (PMIC).
+# Denne lille container læser målingerne hvert 10. sekund, lægger dem sammen
+# til watt, gemmer dem i 30 dage og viser en graf. Homepage viser grafen.
+#
+# Det er et skøn: strøm til USB-enheder og tab i strømforsyningen er ikke med,
+# så en måler i stikkontakten vil vise lidt mere.
+#
+# Ingen passwords her.
+
+services:
+  pi-power:
+    image: python:3.13-slim
+    container_name: pi-power
+    ports:
+      - "3002:8000"
+    # Adgang til Pi'ens firmware, så målingerne kan læses.
+    devices:
+      - /dev/vcio:/dev/vcio
+    environment:
+      TZ: Europe/Copenhagen
+      SAMPLE_SECONDS: "10"   # hvor ofte der måles
+      KEEP_DAYS: "30"        # hvor mange dage historikken gemmes
+    volumes:
+      - pi_power_data:/data
+      # Pi'ens eget måleprogram (vcgencmd), kun til læsning.
+      - /usr/bin/vcgencmd:/usr/bin/vcgencmd:ro
+    command:
+      - sh
+      - -c
+      - |
+        cat > /page.html <<'HTML'
+        <!doctype html>
+        <html lang="da">
+        <head>
+        <meta charset="utf-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1">
+        <title>Strømforbrug - Raspberry Pi</title>
+        <style>
+          :root { --fg: #e2e8f0; --muted: #94a3b8; --grid: rgba(148,163,184,.18); --line: #38bdf8; }
+          * { box-sizing: border-box; }
+          html, body { margin: 0; height: 100%; }
+          body { background: #0f172a; color: var(--fg); font: 14px/1.4 system-ui, -apple-system, "Segoe UI", sans-serif; padding: 16px; display: flex; flex-direction: column; gap: 10px; }
+          body.embed { background: transparent; padding: 4px 8px; gap: 6px; font-size: 12px; }
+          h1 { font-size: 18px; margin: 0; font-weight: 600; }
+          .embed h1 { display: none; }
+          .top { display: flex; flex-wrap: wrap; align-items: baseline; gap: 6px 18px; }
+          .big { font-size: 28px; font-weight: 600; font-variant-numeric: tabular-nums; }
+          .embed .big { font-size: 20px; }
+          .stat { color: var(--muted); font-variant-numeric: tabular-nums; }
+          .stat b { color: var(--fg); font-weight: 600; }
+          .ranges { margin-left: auto; display: flex; gap: 4px; }
+          .ranges button { background: rgba(148,163,184,.12); color: var(--fg); border: 0; border-radius: 6px; padding: 3px 9px; font: inherit; cursor: pointer; }
+          .ranges button.on { background: var(--line); color: #0f172a; font-weight: 600; }
+          .wrap { position: relative; flex: 1; min-height: 120px; }
+          canvas { position: absolute; inset: 0; width: 100%; height: 100%; }
+          #tip { position: absolute; pointer-events: none; background: rgba(15,23,42,.92); border: 1px solid var(--grid); border-radius: 6px; padding: 4px 8px; white-space: nowrap; display: none; font-variant-numeric: tabular-nums; }
+          .note { color: var(--muted); font-size: 12px; }
+          .embed .note { display: none; }
+          #err { color: #fca5a5; }
+        </style>
+        </head>
+        <body>
+        <h1>Strømforbrug - Raspberry Pi 5</h1>
+        <div class="top">
+          <span class="big" id="now">-- W</span>
+          <span class="stat">Gns. <b id="avg">--</b></span>
+          <span class="stat">Maks. <b id="max">--</b></span>
+          <span class="stat" id="kwhbox">Forbrug <b id="kwh">--</b></span>
+          <span class="ranges">
+            <button data-h="1">1 t</button><button data-h="24" class="on">24 t</button><button data-h="168">7 d</button><button data-h="720">30 d</button>
+          </span>
+        </div>
+        <div class="wrap"><canvas id="c"></canvas><div id="tip"></div></div>
+        <div class="note">Anslået ud fra Pi'ens egne målinger (PMIC). Strøm til USB-enheder og tab i strømforsyningen er ikke med, så en måler i stikkontakten vil vise lidt mere. <span id="err"></span></div>
+        <script>
+        var embed = /[?&]embed=1/.test(location.search);
+        if (embed) document.body.className = "embed";
+        var hours = 24, data = null;
+        var canvas = document.getElementById("c"), tip = document.getElementById("tip");
+
+        function fmt(v, d) { return v === null || v === undefined ? "--" : v.toFixed(d).replace(".", ","); }
+        function pad(n) { return (n < 10 ? "0" : "") + n; }
+        function label(ts, withDay) {
+          var d = new Date(ts * 1000), t = pad(d.getHours()) + ":" + pad(d.getMinutes());
+          return withDay ? d.getDate() + "/" + (d.getMonth() + 1) + " " + t : t;
+        }
+
+        function loadNow() {
+          fetch("api/now").then(function (r) { return r.json(); }).then(function (j) {
+            document.getElementById("now").textContent = fmt(j.watts, 2) + " W";
+            document.getElementById("err").textContent = j.error ? "Fejl: " + j.error : "";
+          }).catch(function () {});
+        }
+
+        function loadHistory() {
+          fetch("api/history?hours=" + hours).then(function (r) { return r.json(); }).then(function (j) {
+            data = j;
+            document.getElementById("avg").textContent = fmt(j.avg, 2) + " W";
+            document.getElementById("max").textContent = fmt(j.max, 2) + " W";
+            document.getElementById("kwh").textContent = fmt(j.kwh, 3) + " kWh";
+            draw();
+          }).catch(function () {});
+        }
+
+        function draw() {
+          var dpr = window.devicePixelRatio || 1, w = canvas.clientWidth, h = canvas.clientHeight;
+          canvas.width = w * dpr; canvas.height = h * dpr;
+          var g = canvas.getContext("2d");
+          g.setTransform(dpr, 0, 0, dpr, 0, 0);
+          g.clearRect(0, 0, w, h);
+          var css = getComputedStyle(document.documentElement);
+          var pts = data ? data.points : [];
+          var L = 34, R = 6, T = 6, B = 18, pw = w - L - R, ph = h - T - B;
+          var now = Date.now() / 1000, x0 = now - hours * 3600;
+          var top = 1;
+          pts.forEach(function (p) { if (p[1] > top) top = p[1]; });
+          top = Math.ceil(top * 1.2 * 2) / 2;
+          function X(ts) { return L + (ts - x0) / (now - x0) * pw; }
+          function Y(v) { return T + ph - v / top * ph; }
+
+          g.font = "11px system-ui, sans-serif";
+          g.fillStyle = css.getPropertyValue("--muted").trim();
+          g.strokeStyle = css.getPropertyValue("--grid").trim();
+          g.lineWidth = 1;
+          g.textAlign = "right"; g.textBaseline = "middle";
+          for (var i = 0; i <= 4; i++) {
+            var v = top * i / 4, y = Math.round(Y(v)) + 0.5;
+            g.beginPath(); g.moveTo(L, y); g.lineTo(w - R, y); g.stroke();
+            g.fillText(fmt(v, 1) + " W", L - 4, y);
+          }
+          g.textAlign = "center"; g.textBaseline = "top";
+          for (var k = 0; k <= 4; k++) {
+            var ts = x0 + (now - x0) * k / 4;
+            g.fillText(label(ts, hours > 24), Math.min(Math.max(X(ts), L + 16), w - R - 16), T + ph + 4);
+          }
+          if (!pts.length) {
+            g.textBaseline = "middle";
+            g.fillText("Ingen målinger endnu. Vent et øjeblik ...", L + pw / 2, T + ph / 2);
+            return;
+          }
+          var gap = data.bucket * 3;
+          function path() {
+            g.beginPath();
+            for (var i = 0; i < pts.length; i++) {
+              var p = pts[i], x = X(p[0] + data.bucket / 2), y = Y(p[1]);
+              if (i === 0 || p[0] - pts[i - 1][0] > gap) g.moveTo(x, y); else g.lineTo(x, y);
+            }
+          }
+          path();
+          g.strokeStyle = css.getPropertyValue("--line").trim(); g.lineWidth = 1.5; g.stroke();
+        }
+
+        canvas.addEventListener("mousemove", function (e) {
+          if (!data || !data.points.length) return;
+          var rect = canvas.getBoundingClientRect(), mx = e.clientX - rect.left;
+          var now = Date.now() / 1000, x0 = now - hours * 3600, ts = x0 + (mx - 34) / (rect.width - 40) * (now - x0);
+          var best = null;
+          data.points.forEach(function (p) { if (!best || Math.abs(p[0] - ts) < Math.abs(best[0] - ts)) best = p; });
+          tip.textContent = label(best[0], hours > 24) + "  " + fmt(best[1], 2) + " W (maks. " + fmt(best[2], 2) + " W)";
+          tip.style.display = "block";
+          var left = Math.min(mx + 10, rect.width - tip.offsetWidth - 4);
+          tip.style.left = Math.max(0, left) + "px"; tip.style.top = "4px";
+        });
+        canvas.addEventListener("mouseleave", function () { tip.style.display = "none"; });
+
+        Array.prototype.forEach.call(document.querySelectorAll(".ranges button"), function (b) {
+          b.addEventListener("click", function () {
+            Array.prototype.forEach.call(document.querySelectorAll(".ranges button"), function (o) { o.className = ""; });
+            b.className = "on"; hours = Number(b.getAttribute("data-h")); loadHistory();
+          });
+        });
+        window.addEventListener("resize", draw);
+        loadNow(); loadHistory();
+        setInterval(loadNow, 10000);
+        setInterval(loadHistory, 60000);
+        </script>
+        </body>
+        </html>
+        HTML
+
+        cat > /app.py <<'PY'
+        import fcntl, json, os, re, sqlite3, struct, subprocess, threading, time
+        from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+        from urllib.parse import urlparse, parse_qs
+
+        INTERVAL = int(os.environ.get("SAMPLE_SECONDS", "10"))
+        KEEP_DAYS = int(os.environ.get("KEEP_DAYS", "30"))
+        DB = "/data/power.db"
+        LINE = re.compile(r"(\S+)\s+(current|volt)\(\d+\)=([0-9.]+)")
+        state = {"watts": None, "volts": None, "ts": None, "raw": "", "error": "Ingen måling endnu"}
+
+
+        def read_ioctl():
+            # Samme besked som vcgencmd sender til Pi'ens firmware via /dev/vcio.
+            size = 1024
+            words = 6 + size // 4 + 1
+            buf = bytearray(words * 4)
+            struct.pack_into("<6I", buf, 0, words * 4, 0, 0x00030080, size, 0, 0)
+            cmd = b"pmic_read_adc\0"
+            buf[24:24 + len(cmd)] = cmd
+            fd = os.open("/dev/vcio", os.O_RDWR)
+            try:
+                fcntl.ioctl(fd, 0xC0086400, buf, True)
+            finally:
+                os.close(fd)
+            return bytes(buf[24:24 + size]).split(b"\0", 1)[0].decode("ascii", "replace")
+
+
+        def read_pmic():
+            if os.path.exists("/usr/bin/vcgencmd"):
+                try:
+                    r = subprocess.run(["/usr/bin/vcgencmd", "pmic_read_adc"],
+                                       capture_output=True, text=True, timeout=5)
+                    if r.returncode == 0 and "current" in r.stdout:
+                        return r.stdout
+                except Exception:
+                    pass
+            return read_ioctl()
+
+
+        def calc(raw):
+            amps, volts = {}, {}
+            for name, kind, value in LINE.findall(raw):
+                if kind == "current" and name.endswith("_A"):
+                    amps[name[:-2]] = float(value)
+                elif kind == "volt" and name.endswith("_V"):
+                    volts[name[:-2]] = float(value)
+            rails = [k for k in amps if k in volts]
+            if not rails:
+                raise ValueError("Kunne ikke læse spænding/strøm fra PMIC")
+            watts = sum(amps[k] * volts[k] for k in rails)
+            return watts, volts.get("EXT5V")
+
+
+        def db():
+            con = sqlite3.connect(DB, timeout=10)
+            con.execute("PRAGMA journal_mode=WAL")
+            return con
+
+
+        def sampler():
+            con = db()
+            last_clean = 0
+            while True:
+                start = time.time()
+                try:
+                    raw = read_pmic()
+                    watts, volts = calc(raw)
+                    now = int(start)
+                    con.execute("INSERT OR REPLACE INTO samples VALUES (?, ?)", (now, round(watts, 3)))
+                    if now - last_clean > 3600:
+                        con.execute("DELETE FROM samples WHERE ts < ?", (now - KEEP_DAYS * 86400,))
+                        last_clean = now
+                    con.commit()
+                    state.update(watts=round(watts, 2), volts=volts, ts=now, raw=raw, error=None)
+                except Exception as e:
+                    if state["error"] != str(e):
+                        print("Fejl ved måling:", e, flush=True)
+                    state["error"] = str(e)
+                time.sleep(max(1, INTERVAL - (time.time() - start)))
+
+
+        def stats(con, since):
+            row = con.execute("SELECT AVG(watts), MIN(watts), MAX(watts) FROM samples WHERE ts >= ?",
+                              (since,)).fetchone()
+            return [None if v is None else round(v, 2) for v in row]
+
+
+        def history(hours):
+            now = int(time.time())
+            since = now - int(hours * 3600)
+            bucket = max(INTERVAL, int(hours * 3600 / 400))
+            con = db()
+            try:
+                rows = con.execute(
+                    "SELECT (ts / ?) * ? AS b, AVG(watts), MAX(watts) FROM samples "
+                    "WHERE ts >= ? GROUP BY b ORDER BY b", (bucket, bucket, since)).fetchall()
+                avg, low, high = stats(con, since)
+            finally:
+                con.close()
+            kwh = None if avg is None else round(avg * hours / 1000, 3)
+            return {"hours": hours, "bucket": bucket, "avg": avg, "min": low, "max": high, "kwh": kwh,
+                    "points": [[b, round(a, 3), round(m, 3)] for b, a, m in rows]}
+
+
+        def now_json():
+            con = db()
+            try:
+                avg, low, high = stats(con, int(time.time()) - 86400)
+            finally:
+                con.close()
+            return {"watts": state["watts"], "volts": state["volts"], "time": state["ts"],
+                    "avg24h": avg, "min24h": low, "max24h": high,
+                    "kwh24h": None if avg is None else round(avg * 24 / 1000, 3),
+                    "error": state["error"]}
+
+
+        class Handler(BaseHTTPRequestHandler):
+            def send(self, code, body, ctype):
+                data = body.encode("utf-8")
+                self.send_response(code)
+                self.send_header("Content-Type", ctype)
+                self.send_header("Content-Length", str(len(data)))
+                self.send_header("Cache-Control", "no-store")
+                self.end_headers()
+                self.wfile.write(data)
+
+            def do_GET(self):
+                url = urlparse(self.path)
+                try:
+                    if url.path == "/api/now":
+                        self.send(200, json.dumps(now_json()), "application/json")
+                    elif url.path == "/api/history":
+                        hours = float(parse_qs(url.query).get("hours", ["24"])[0])
+                        hours = min(max(hours, 0.25), KEEP_DAYS * 24)
+                        self.send(200, json.dumps(history(hours)), "application/json")
+                    elif url.path == "/api/raw":
+                        self.send(200, state["raw"] or (state["error"] or ""), "text/plain; charset=utf-8")
+                    elif url.path == "/":
+                        self.send(200, PAGE, "text/html; charset=utf-8")
+                    else:
+                        self.send(404, "Ikke fundet", "text/plain; charset=utf-8")
+                except Exception as e:
+                    self.send(500, str(e), "text/plain; charset=utf-8")
+
+            def log_message(self, *args):
+                pass
+
+
+        PAGE = open("/page.html", encoding="utf-8").read()
+
+        if __name__ == "__main__":
+            os.makedirs("/data", exist_ok=True)
+            setup = db()
+            setup.execute("CREATE TABLE IF NOT EXISTS samples (ts INTEGER PRIMARY KEY, watts REAL)")
+            setup.commit()
+            setup.close()
+            threading.Thread(target=sampler, daemon=True).start()
+            print("Strømmåler kører på port 8000", flush=True)
+            ThreadingHTTPServer(("", 8000), Handler).serve_forever()
+        PY
+
+        exec python -u /app.py
+    restart: unless-stopped
+
+volumes:
+  pi_power_data:
