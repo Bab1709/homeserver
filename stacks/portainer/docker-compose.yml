@@ -1,0 +1,23 @@
+# Portainer CE (styrer alle de andre containere)
+# Web-panel: https://192.168.1.86:9443
+#
+# OBS: Portainer kan ikke installere sig selv som en stack.
+# Denne fil er en reference / backup. Kør den fra Pi'en med:
+#   docker compose up -d
+# (kun hvis Portainer en dag skal geninstalleres)
+
+services:
+  portainer:
+    image: portainer/portainer-ce:lts
+    container_name: portainer
+    ports:
+      - "9443:9443"
+      - "8000:8000"
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+      - portainer_data:/data
+    restart: always
+
+volumes:
+  portainer_data:
+    name: portainer_data

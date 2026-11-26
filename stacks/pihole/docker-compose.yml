@@ -1,0 +1,26 @@
+# Pi-hole v6 (reklame- og DNS-blokering for hele netværket)
+# Web-panel: http://192.168.1.86:8080/admin
+#
+# Password sættes IKKE her. Tilføj det i Portainer under
+# "Environment variables" som PIHOLE_PASSWORD.
+
+services:
+  pihole:
+    image: pihole/pihole:latest
+    container_name: pihole
+    network_mode: host
+    environment:
+      TZ: Europe/Copenhagen
+      FTLCONF_webserver_api_password: ${PIHOLE_PASSWORD}
+      FTLCONF_webserver_port: "8080"
+      FTLCONF_dns_listeningMode: all
+    volumes:
+      - pihole_etc:/etc/pihole
+    cap_add:
+      - NET_ADMIN
+      - SYS_TIME
+      - SYS_NICE
+    restart: unless-stopped
+
+volumes:
+  pihole_etc:

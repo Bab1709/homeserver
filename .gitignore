@@ -1,0 +1,4 @@
+# Rigtige passwords og hemmeligheder må aldrig i git
+.env
+*.env
+!*.env.example
