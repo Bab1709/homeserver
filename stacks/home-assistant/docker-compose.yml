@@ -1,0 +1,25 @@
+# Home Assistant (styring af lys, stikkontakter, sensorer m.m. i hjemmet)
+# Web-panel: http://192.168.1.86:8123
+#
+# Ingen passwords her. Brugeren laves første gang du åbner siden.
+
+services:
+  home-assistant:
+    image: ghcr.io/home-assistant/home-assistant:stable
+    container_name: home-assistant
+    # Bruger Pi'ens netværk direkte, så Home Assistant selv kan finde
+    # enheder på netværket (f.eks. Chromecast, Hue, smart-TV).
+    network_mode: host
+    # Giver adgang til USB-dongler (Zigbee/Z-Wave) og Bluetooth på Pi'en.
+    privileged: true
+    environment:
+      TZ: Europe/Copenhagen
+    volumes:
+      - home_assistant_config:/config
+      - /etc/localtime:/etc/localtime:ro
+      # Bluetooth
+      - /run/dbus:/run/dbus:ro
+    restart: unless-stopped
+
+volumes:
+  home_assistant_config:

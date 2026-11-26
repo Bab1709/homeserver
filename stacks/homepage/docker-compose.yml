@@ -8,6 +8,7 @@
 #   PIHOLE_PASSWORD = samme password som du bruger til Pi-hole
 #   TAILSCALE_DEVICE_ID = Pi'ens ID fra Tailscale (se README)
 #   TAILSCALE_API_KEY   = API-nøgle fra Tailscale (se README)
+#   HOME_ASSISTANT_TOKEN = adgangsnøgle fra Home Assistant (se README)
 
 services:
   # Lille hjælpe-container: skriver opsætningsfilerne og stopper igen.
@@ -32,6 +33,9 @@ services:
             style: row
             columns: 2
           Styring:
+            style: row
+            columns: 2
+          Hjem:
             style: row
             columns: 2
         YAML
@@ -65,6 +69,15 @@ services:
                 description: Overvågning af tjenester
                 icon: uptime-kuma.png
                 siteMonitor: http://192.168.1.86:3001
+        - Hjem:
+            - Home Assistant:
+                href: http://192.168.1.86:8123
+                description: Styring af hjemmet
+                icon: home-assistant.png
+                widget:
+                  type: homeassistant
+                  url: http://192.168.1.86:8123
+                  key: "{{HOMEPAGE_VAR_HOME_ASSISTANT_TOKEN}}"
         YAML
 
         cat > /config/widgets.yaml <<'YAML'
@@ -112,6 +125,7 @@ services:
       HOMEPAGE_VAR_PIHOLE_PASSWORD: ${PIHOLE_PASSWORD}
       HOMEPAGE_VAR_TAILSCALE_DEVICE_ID: ${TAILSCALE_DEVICE_ID}
       HOMEPAGE_VAR_TAILSCALE_API_KEY: ${TAILSCALE_API_KEY}
+      HOMEPAGE_VAR_HOME_ASSISTANT_TOKEN: ${HOME_ASSISTANT_TOKEN}
       TZ: Europe/Copenhagen
     volumes:
       - homepage_config:/app/config

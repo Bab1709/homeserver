@@ -11,8 +11,9 @@ Alt kører i Docker og styres fra Portainer.
 | Pi-hole     | Blokerer reklamer for hele netværket (DNS) | http://192.168.1.86:8080/admin   | `stacks/pihole`       |
 | Uptime Kuma | Holder øje med om alt kører               | http://192.168.1.86:3001         | `stacks/uptime-kuma`  |
 | Homepage    | Startside med links til det hele          | http://192.168.1.86:3000         | `stacks/homepage`     |
+| Home Assistant | Styring af lys, stik og sensorer i hjemmet | http://192.168.1.86:8123   | `stacks/home-assistant` |
 
-Porte i brug: `53` (DNS), `8080` (Pi-hole), `9443` og `8000` (Portainer), `3001` (Uptime Kuma), `3000` (Homepage).
+Porte i brug: `53` (DNS), `8080` (Pi-hole), `9443` og `8000` (Portainer), `3001` (Uptime Kuma), `3000` (Homepage), `8123` (Home Assistant).
 Hvis du tilføjer noget nyt, så vælg en port der ikke står her.
 
 ## Passwords
@@ -47,6 +48,7 @@ Det er den samme fremgangsmåde for alle tjenester:
    - **Portainer**: type *HTTP(s)*, URL `https://192.168.1.86:9443`, og slå **Ignore TLS/SSL errors** til
      (Portainer bruger sit eget certifikat)
    - **Homepage**: type *HTTP(s)*, URL `http://192.168.1.86:3000`
+   - **Home Assistant**: type *HTTP(s)*, URL `http://192.168.1.86:8123`
 
 ### Homepage
 
@@ -95,6 +97,36 @@ sudo tailscale up
    - `TAILSCALE_API_KEY` = nøglen fra trin 1
    - `TAILSCALE_DEVICE_ID` = ID'et fra trin 2
 4. Opdater compose-teksten i **Editor** med den nyeste `stacks/homepage/docker-compose.yml`, og klik **Update the stack**.
+
+### Home Assistant
+
+1. Følg trinene ovenfor med navnet `home-assistant` og filen `stacks/home-assistant/docker-compose.yml`.
+   Ingen password-variabel. Første start tager et par minutter, mens Home Assistant gør sig klar.
+2. Åbn http://192.168.1.86:8123. Siden kan vise "Preparing Home Assistant" et stykke tid, det er normalt.
+3. Klik **Create my smart home**, og lav din bruger (navn, brugernavn og password). Husk password'et.
+4. Vælg hvor dit hjem ligger på kortet (bruges til vejr og solopgang), og tjek at tidszone og enheder er rigtige.
+5. Vælg om du vil dele anonyme data (det er frivilligt), og klik **Next**.
+6. Home Assistant viser de enheder, den selv har fundet på netværket. Du kan tilføje dem nu eller senere under
+   **Settings > Devices & services**.
+
+**Home Assistant-flisen på Homepage** viser hvor mange der er hjemme, og hvor mange lys og kontakter der er tændt.
+Den skal bruge en adgangsnøgle fra Home Assistant:
+
+1. I Home Assistant: klik på dit navn nederst til venstre, og vælg fanen **Security**.
+2. Rul ned til **Long-lived access tokens**, og klik **Create token**. Giv den navnet `homepage`.
+3. Kopier nøglen med det samme (du ser den kun én gang).
+4. I Portainer: **Stacks > homepage**. Tilføj under **Environment variables** `HOME_ASSISTANT_TOKEN` = nøglen.
+5. Opdater compose-teksten i **Editor** med den nyeste `stacks/homepage/docker-compose.yml`, og klik **Update the stack**.
+
+Indtil nøglen er lagt ind, viser flisen en fejl. Linket på flisen virker stadig.
+
+Godt at vide:
+- Denne udgave af Home Assistant kører som en almindelig Docker-container ("Container"-udgaven).
+  Den har **ikke** add-ons (butikken med ekstra programmer) og ikke de indbyggede backups af hele systemet.
+  Mange add-ons kan i stedet køres som deres egen stack i Portainer. Fællesskabs-butikken **HACS**
+  kan installeres manuelt senere, men den er ikke nødvendig for at komme i gang.
+- `privileged: true` giver Home Assistant adgang til USB-dongler (Zigbee/Z-Wave) og Bluetooth på Pi'en.
+- Opdatering: **Stacks > home-assistant**, klik **Update the stack**, og slå **Re-pull image** til.
 
 ### Pi-hole
 
